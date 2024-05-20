@@ -1,3 +1,4 @@
+
 "use client";
 import { ColumnDef } from "@tanstack/react-table";
 
@@ -23,7 +24,7 @@ import {
 	getDocs,
 } from "firebase/firestore";
 import * as XLSX from "xlsx";
-import { fetchSingleDoc } from "@/api/fileApi";
+import { fetchSingleDoc, fetchScheduleTestData } from "@/api/fileApi"; // import fetchScheduleTestData
 import { db } from "@/firebase/firebaseConfig";
 import { redirect, useRouter } from "next/navigation";
 import Link from "next/link";
@@ -111,37 +112,68 @@ export const columns: ColumnDef<Schedule>[] = [
 		cell: ({ row }) => {
 			const file = row.original;
 
-			const handleExportClick = () => {
+		
+
+			const handleExportClick = async () => {
 				const convertJsonToXlsx = (jsonData: any) => {
-					// Create a new workbook
-					const workbook = XLSX.utils.book_new();
-
-					// Convert the JSON object to a worksheet
-					const worksheet = XLSX.utils.json_to_sheet(JSON.parse(jsonData));
-
-					// Add the worksheet to the workbook
-					XLSX.utils.book_append_sheet(workbook, worksheet, "Sheet1");
-
-					// Generate the XLSX file
-					const xlsxData = XLSX.write(workbook, {
-						type: "binary",
-						bookType: "xlsx",
-					});
-
-					// Create a Blob from the XLSX data
-					const blob = new Blob([s2ab(xlsxData)], {
-						type: "application/octet-stream",
-					});
-
-					// Create a download link and trigger the download
-					const downloadLink = document.createElement("a");
-					downloadLink.href = URL.createObjectURL(blob);
-					downloadLink.download = "data.xlsx";
-					document.body.appendChild(downloadLink);
-					downloadLink.click();
-					document.body.removeChild(downloadLink);
+					try {
+						// Parse the JSON data
+						const parsedData = JSON.parse(jsonData);
+			
+						// Log the parsed data to understand its structure
+						console.log("Parsed data:", parsedData);
+			
+						// Ensure the data is an array of objects
+						const dataArray = Array.isArray(parsedData) ? parsedData : [parsedData];
+			
+						// Define the desired column sequence
+						const columnOrder = [
+							"SchoolArea", "Hall", "StudentId", "Batch", "Room", "Floor", "CheckBox",
+							"OperationsStaffInitial", "OperationsStaffNotes", "OrderNotes", "ProcessedDate",
+							"UnitType", "First", "Last", "Team", "Load", "AdministrativeNotes"
+						];
+			
+						// Rearrange the data according to the column order
+						const orderedData = dataArray.map(item => {
+							const orderedItem: any = {};
+							columnOrder.forEach(col => {
+								orderedItem[col] = item[col];
+							});
+							return orderedItem;
+						});
+			
+						// Create a new workbook
+						const workbook = XLSX.utils.book_new();
+			
+						// Convert the JSON object to a worksheet with the specified header
+						const worksheet = XLSX.utils.json_to_sheet(orderedData, { header: columnOrder });
+			
+						// Add the worksheet to the workbook
+						XLSX.utils.book_append_sheet(workbook, worksheet, "Sheet1");
+			
+						// Generate the XLSX file
+						const xlsxData = XLSX.write(workbook, {
+							type: "binary",
+							bookType: "xlsx",
+						});
+			
+						// Create a Blob from the XLSX data
+						const blob = new Blob([s2ab(xlsxData)], {
+							type: "application/octet-stream",
+						});
+			
+						// Create a download link and trigger the download
+						const downloadLink = document.createElement("a");
+						downloadLink.href = URL.createObjectURL(blob);
+						downloadLink.download = "data.xlsx";
+						document.body.appendChild(downloadLink);
+						downloadLink.click();
+						document.body.removeChild(downloadLink);
+					} catch (error) {
+						console.error("Error converting JSON to XLSX:", error);
+					}
 				};
-
+			
 				// Helper function to convert a string to an ArrayBuffer
 				const s2ab = (s: string) => {
 					const buf = new ArrayBuffer(s.length);
@@ -151,13 +183,33 @@ export const columns: ColumnDef<Schedule>[] = [
 					}
 					return buf;
 				};
+			
 				const runConversion = async (id: number) => {
-					const jsonData = await fetchSingleDoc(id);
-					convertJsonToXlsx(jsonData);
+					try {
+						// Fetch the scheduleTestId from scheduleData
+						const scheduleTestId = await fetchSingleDoc(id);
+			
+						// Fetch the scheduleTest data using the retrieved scheduleTestId
+						const scheduleTestData = await fetchScheduleTestData(scheduleTestId);
+			
+						// Process the scheduleTestData to create a consistent format for XLSX
+						const processedData = Object.keys(scheduleTestData).map(key => {
+							return scheduleTestData[key];
+						});
+			
+						// Convert the processed data to JSON and then to XLSX
+						const jsonData = JSON.stringify(processedData);
+			
+						convertJsonToXlsx(jsonData);
+					} catch (error) {
+						console.error("Error fetching and converting data:", error);
+					}
 				};
-
+			
 				runConversion(file.id);
 			};
+
+			
 
 			const handlePushToAppClick = async () => {
 				try {
